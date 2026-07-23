@@ -18,17 +18,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Payload tidak valid" }, { status: 400 });
   }
 
+  // Verifikasi keaslian data dari Telegram Widget
   const check = verifyTelegramAuth(data, botToken);
   if (!check.valid) {
-    return NextResponse.json({ error: check.reason }, { status: 401 });
+    return NextResponse.json({ error: check.reason || "Autentikasi Telegram gagal" }, { status: 401 });
   }
 
   const supabaseAdmin = createAdminClient();
 
   // Setiap akun Telegram dipetakan ke satu email "dummy" yang unik & stabil.
-  // Ini bukan email asli, cuma dipakai sebagai identifier internal Supabase Auth.
   const email = `tg-${data.id}@telegram.local`;
 
+  // Cek apakah user sudah ada atau buat baru
   const { error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     email_confirm: true,
@@ -42,29 +43,21 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Kalau errornya "sudah terdaftar", itu wajar (user login kedua kali dst) -> lanjut.
-  // Selain itu, itu error asli -> hentikan.
-  if (createError && !createError.message.toLowerCase().includes("already")) {
+  // Jika error selain karena user sudah terdaftar (already exists), hentikan proses
+  if (createError && !createError.message.toLowerCase().includes("already") && !createError.message.toLowerCase().includes("already registered")) {
     return NextResponse.json({ error: createError.message }, { status: 500 });
   }
 
-  // PENTING: hanya izinkan akun yang memang sudah didaftarkan admin lewat
-  // Supabase Dashboard (lihat README bagian "Login staff"). Kalau kamu ingin
-  // SIAPA SAJA yang klik tombol Telegram otomatis jadi staff, hapus blok ini.
-  //
-  // const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
-  // const isPreApproved = userList?.users.some((u) => u.email === email);
-  // if (!isPreApproved) {
-  //   return NextResponse.json({ error: "Akun ini belum diberi akses" }, { status: 403 });
-  // }
+  // Gunakan domain production langsung untuk menghindari ketidakcocokan origin dari request proxy Vercel
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://hisotry-magang.vercel.app";
 
-  const origin = request.nextUrl.origin;
+  // Generate magic link untuk login otomatis
   const { data: linkData, error: linkError } =
     await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
       email,
       options: {
-        redirectTo: `${origin}/auth/callback`,
+        redirectTo: `${siteUrl}/auth/callback`,
       },
     });
 
@@ -75,5 +68,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Kembalikan URL action link agar frontend bisa langsung mengarahkan pengguna masuk
   return NextResponse.json({ url: linkData.properties.action_link });
 }
