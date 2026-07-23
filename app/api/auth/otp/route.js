@@ -1,8 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { authenticator } from "otplib";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export async function POST(request: NextRequest) {
+export async function POST(request) {
   try {
     const { email, token } = await request.json();
 
