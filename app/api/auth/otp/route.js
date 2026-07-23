@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { authenticator } from "otplib";
+import otplib from "otplib";
+const { authenticator } = otplib;
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request) {
