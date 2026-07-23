@@ -1,74 +1,39 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-
-declare global {
-  interface Window {
-    onTelegramAuth?: (user: Record<string, unknown>) => void;
-  }
-}
+import { useState } from "react";
 
 export default function LoginPage() {
-  const widgetContainer = useRef<HTMLDivElement>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // 1. Definisikan fungsi callback auth Telegram
-    window.onTelegramAuth = async (user) => {
-      setLoading(true);
-      setError(null);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
 
-      try {
-        const res = await fetch("/api/auth/telegram", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(user),
-        });
-        const json = await res.json();
+    try {
+      const res = await fetch("/api/auth/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, token }),
+      });
+      const data = await res.json();
 
-        if (!res.ok) {
-          setError(json.error ?? "Login gagal, coba lagi.");
-          setLoading(false);
-          return;
-        }
-
-        // Alihkan ke URL magic link Supabase yang dikembalikan dari backend
-        window.location.href = json.url;
-      } catch {
-        setError("Terjadi kesalahan jaringan, coba lagi.");
+      if (!res.ok) {
+        setError(data.error ?? "Gagal verifikasi kode");
         setLoading(false);
+        return;
       }
-    };
 
-    // 2. Bersihkan kontainer terlebih dahulu untuk mencegah duplikasi script saat hot-reload
-    const container = widgetContainer.current;
-    if (container) {
-      container.innerHTML = "";
+      // Alihkan ke sesi login jika berhasil
+      window.location.href = data.url;
+    } catch {
+      setError("Terjadi kesalahan jaringan.");
+      setLoading(false);
     }
-
-    // 3. Buat dan pasang script Telegram Widget
-    const script = document.createElement("script");
-    script.src = "https://telegram.org/js/telegram-widget.js?22";
-    script.async = true;
-    script.setAttribute(
-      "data-telegram-login",
-      process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? ""
-    );
-    script.setAttribute("data-size", "large");
-    script.setAttribute("data-onauth", "onTelegramAuth(user)");
-    script.setAttribute("data-request-access", "write");
-
-    container?.appendChild(script);
-
-    // 4. Cleanup saat komponen dilepas (unmount)
-    return () => {
-      delete window.onTelegramAuth;
-      if (container) {
-        container.innerHTML = "";
-      }
-    };
-  }, []);
+  };
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-accent-soft px-4">
@@ -77,16 +42,45 @@ export default function LoginPage() {
           Riwayat Pelanggan
         </h1>
         <p className="text-sm text-gray-500 mb-6">
-          Login staff menggunakan Telegram
+          Login Staff via Google Authenticator
         </p>
 
-        {/* Tempat widget Telegram dirender */}
-        <div ref={widgetContainer} className="flex justify-center min-h-[40px]" />
+        <form onSubmit={handleLogin} className="flex flex-col gap-4 text-left">
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">Email Staff</label>
+            <input
+              type="email"
+              placeholder="nama@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full p-2.5 border rounded-lg text-sm"
+            />
+          </div>
 
-        {loading && (
-          <p className="mt-4 text-sm text-gray-500">Memproses login...</p>
-        )}
-        {error && <p className="mt-4 text-sm text-coral">{error}</p>}
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">Kode Google Authenticator (6 Digit)</label>
+            <input
+              type="text"
+              maxLength={6}
+              placeholder="000000"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              required
+              className="w-full p-2.5 border rounded-lg text-center tracking-widest text-lg font-mono"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 bg-accent text-white rounded-lg font-medium text-sm mt-2 hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Memverifikasi..." : "Masuk"}
+          </button>
+        </form>
+
+        {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
       </div>
     </main>
   );
