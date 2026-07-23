@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { authenticator } from "otplib";
+import pkg from "otplib";
+const { authenticator } = pkg;
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request) {
@@ -10,11 +11,9 @@ export async function POST(request) {
       return NextResponse.json({ error: "Email dan kode OTP wajib diisi" }, { status: 400 });
     }
 
-    // Catatan: Di tahap setup awal, secret key user harus disimpan ke Database (Supabase)
-    // Di sini kita ambil contoh secret key yang diasumsikan sudah tersimpan di database berdasarkan email user.
     const supabaseAdmin = createAdminClient();
     
-    // Ambil data user atau secret TOTP mereka dari database (misal dari tabel profiles)
+    // Ambil data secret TOTP berdasarkan email user dari tabel profiles
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("totp_secret")
