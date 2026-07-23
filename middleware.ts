@@ -45,6 +45,7 @@ export async function middleware(request: NextRequest) {
   // rute inilah yang bertugas membuat sesi login (proses login Telegram).
   const isAuthFlowRoute =
     pathname.startsWith("/api/auth/telegram") ||
+    pathname.startsWith("/api/auth/otp") ||
     pathname.startsWith("/auth/callback");
 
   // belum login dan bukan lagi di halaman login/proses auth -> lempar ke /login
