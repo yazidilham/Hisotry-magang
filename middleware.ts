@@ -13,9 +13,13 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options });
+          // Hapus maxAge dan expires agar cookie menjadi session cookie
+          // yang otomatis terhapus saat tab/browser ditutup.
+          const { maxAge, expires, ...sessionCookieOptions } = options;
+
+          request.cookies.set({ name, value, ...sessionCookieOptions });
           response = NextResponse.next({ request: { headers: request.headers } });
-          response.cookies.set({ name, value, ...options });
+          response.cookies.set({ name, value, ...sessionCookieOptions });
         },
         remove(name: string, options: CookieOptions) {
           request.cookies.set({ name, value: "", ...options });
@@ -26,21 +30,32 @@ export async function middleware(request: NextRequest) {
     }
   );
 
+  // PENTING: pakai getUser(), bukan getSession().
+  // getSession() di middleware hanya membaca cookie tanpa verifikasi ke server,
+  // jadi bisa "percaya" token yang sudah tidak valid/kadaluarsa.
+  // getUser() memvalidasi token langsung ke server Supabase Auth setiap request.
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  const { pathname } = request.nextUrl;
+  const isLoginPage = pathname.startsWith("/login");
 
-  // belum login dan bukan lagi di halaman login -> lempar ke /login
-  if (!session && !isLoginPage) {
+  // Rute-rute ini harus tetap bisa diakses TANPA sesi, karena justru
+  // rute inilah yang bertugas membuat sesi login (proses login Telegram).
+  const isAuthFlowRoute =
+    pathname.startsWith("/api/auth/telegram") ||
+    pathname.startsWith("/auth/callback");
+
+  // belum login dan bukan lagi di halaman login/proses auth -> lempar ke /login
+  if (!user && !isLoginPage && !isAuthFlowRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
   // sudah login tapi buka /login -> lempar ke beranda
-  if (session && isLoginPage) {
+  if (user && isLoginPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
@@ -50,6 +65,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // jalan di semua route kecuali file statis Next.js
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

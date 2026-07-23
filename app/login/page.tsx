@@ -1,78 +1,79 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabaseBrowserClient } from "@/lib/supabaseBrowser";
+import { useEffect, useRef, useState } from "react";
+
+declare global {
+  interface Window {
+    onTelegramAuth?: (user: Record<string, unknown>) => void;
+  }
+}
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const widgetContainer = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
+  useEffect(() => {
+    window.onTelegramAuth = async (user) => {
+      setLoading(true);
+      setError(null);
 
-    const supabase = supabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+      try {
+        const res = await fetch("/api/auth/telegram", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(user),
+        });
+        const json = await res.json();
 
-    setLoading(false);
+        if (!res.ok) {
+          setError(json.error ?? "Login gagal, coba lagi.");
+          setLoading(false);
+          return;
+        }
 
-    if (error) {
-      setError("Email atau kata sandi salah.");
-      return;
-    }
+        window.location.href = json.url;
+      } catch {
+        setError("Terjadi kesalahan jaringan, coba lagi.");
+        setLoading(false);
+      }
+    };
 
-    router.push("/");
-    router.refresh();
-  }
+    const script = document.createElement("script");
+    script.src = "https://telegram.org/js/telegram-widget.js?22";
+    script.async = true;
+    script.setAttribute(
+      "data-telegram-login",
+      process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? ""
+    );
+    script.setAttribute("data-size", "large");
+    script.setAttribute("data-onauth", "onTelegramAuth(user)");
+    script.setAttribute("data-request-access", "write");
+
+    widgetContainer.current?.appendChild(script);
+
+    return () => {
+      delete window.onTelegramAuth;
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-5">
-      <form
-        onSubmit={handleLogin}
-        className="bg-white border border-neutral-200 rounded-2xl p-6 w-full max-w-sm"
-      >
-        <h1 className="text-lg font-semibold mb-1">Masuk</h1>
-        <p className="text-sm text-neutral-500 mb-5">
-          Khusus staff — hubungi admin kalau belum punya akun.
+    <main className="min-h-screen flex items-center justify-center bg-accent-soft px-4">
+      <div className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm text-center">
+        <h1 className="text-xl font-semibold text-accent mb-1">
+          Riwayat Pelanggan
+        </h1>
+        <p className="text-sm text-gray-500 mb-6">
+          Login staff menggunakan Telegram
         </p>
 
-        <label className="block mb-3">
-          <span className="text-xs text-neutral-500 block mb-1">Email</span>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="border border-neutral-300 rounded-lg px-3 py-2 text-sm w-full"
-          />
-        </label>
+        <div ref={widgetContainer} className="flex justify-center" />
 
-        <label className="block mb-4">
-          <span className="text-xs text-neutral-500 block mb-1">Kata sandi</span>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="border border-neutral-300 rounded-lg px-3 py-2 text-sm w-full"
-          />
-        </label>
-
-        {error && <p className="text-sm text-coral mb-3">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-accent text-white rounded-lg py-2 text-sm disabled:opacity-60"
-        >
-          {loading ? "Memproses..." : "Masuk"}
-        </button>
-      </form>
-    </div>
+        {loading && (
+          <p className="mt-4 text-sm text-gray-500">Memproses login...</p>
+        )}
+        {error && <p className="mt-4 text-sm text-coral">{error}</p>}
+      </div>
+    </main>
   );
 }
