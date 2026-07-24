@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verify } from "otplib";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createRouteClient } from "@/lib/supabase/server";
 
 export async function POST(request) {
   try {
@@ -42,19 +43,34 @@ export async function POST(request) {
       return NextResponse.json({ error: "Kode verifikasi salah atau sudah kedaluwarsa" }, { status: 401 });
     }
 
-    // Jika valid, buat magic link via Supabase Auth Admin
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://hisotry-magang.vercel.app";
+    // Jika valid, minta Supabase generate token verifikasi (bukan link langsung,
+    // karena action_link dari generateLink selalu pakai format lama #access_token
+    // yang tidak bisa ditangkap di server / route handler).
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
       email,
-      options: { redirectTo: `${siteUrl}/auth/callback` },
     });
 
-    if (linkError || !linkData?.properties?.action_link) {
+    const hashedToken = linkData?.properties?.hashed_token;
+
+    if (linkError || !hashedToken) {
       return NextResponse.json({ error: "Gagal membuat sesi login" }, { status: 500 });
     }
 
-    return NextResponse.json({ url: linkData.properties.action_link });
+    // Tukar token_hash jadi sesi LANGSUNG di sini, pakai client yang sadar-cookie,
+    // supaya cookie sesi langsung ter-set di response request ini juga.
+    const supabaseRoute = createRouteClient();
+    const { error: verifyError } = await supabaseRoute.auth.verifyOtp({
+      token_hash: hashedToken,
+      type: "magiclink",
+    });
+
+    if (verifyError) {
+      return NextResponse.json({ error: "Gagal memverifikasi sesi login" }, { status: 500 });
+    }
+
+    // Sesi sudah ter-set lewat cookie di response ini. Client tinggal redirect ke "/".
+    return NextResponse.json({ url: "/" });
   } catch (err) {
     return NextResponse.json({ error: `Server Error: ${err.message}` }, { status: 500 });
   }
