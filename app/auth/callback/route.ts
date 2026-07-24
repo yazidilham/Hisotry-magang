@@ -1,77 +1,19 @@
-import { NextResponse } from "next/server";
-import { verify } from "otplib";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient } from "@/lib/supabase/server";
 
-export async function POST(request) {
-  try {
-    const body = await request.json().catch(() => ({}));
-    const { email, token } = body;
+export async function GET(request: NextRequest) {
+  const code = request.nextUrl.searchParams.get("code");
 
-    if (!email || !token) {
-      return NextResponse.json({ error: "Email dan kode OTP wajib diisi" }, { status: 400 });
+  if (code) {
+    const supabase = createRouteClient();
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("error", "Gagal memverifikasi sesi login");
+      return NextResponse.redirect(url);
     }
-
-    const supabaseAdmin = createAdminClient();
-
-    // Ambil data secret TOTP berdasarkan email user dari tabel profiles
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("totp_secret")
-      .eq("email", email)
-      .single();
-
-    if (profileError || !profile?.totp_secret) {
-      return NextResponse.json({ error: "Konfigurasi Authenticator tidak ditemukan untuk akun ini" }, { status: 400 });
-    }
-
-    let result;
-    try {
-      result = await verify({
-        secret: String(profile.totp_secret).trim(),
-        token: String(token).trim(),
-      });
-    } catch (verifyErr) {
-      // contoh: SecretTooShortError kalau secret di DB kurang dari 16 byte setelah decode base32
-      return NextResponse.json(
-        { error: `Gagal verifikasi kode: ${verifyErr.message}` },
-        { status: 400 }
-      );
-    }
-
-    if (!result?.valid) {
-      return NextResponse.json({ error: "Kode verifikasi salah atau sudah kedaluwarsa" }, { status: 401 });
-    }
-
-    // Jika valid, minta Supabase generate token verifikasi (bukan link langsung,
-    // karena action_link dari generateLink selalu pakai format lama #access_token
-    // yang tidak bisa ditangkap di server / route handler).
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
-      email,
-    });
-
-    const hashedToken = linkData?.properties?.hashed_token;
-
-    if (linkError || !hashedToken) {
-      return NextResponse.json({ error: "Gagal membuat sesi login" }, { status: 500 });
-    }
-
-    // Tukar token_hash jadi sesi LANGSUNG di sini, pakai client yang sadar-cookie,
-    // supaya cookie sesi langsung ter-set di response request ini juga.
-    const supabaseRoute = createRouteClient();
-    const { error: verifyError } = await supabaseRoute.auth.verifyOtp({
-      token_hash: hashedToken,
-      type: "magiclink",
-    });
-
-    if (verifyError) {
-      return NextResponse.json({ error: "Gagal memverifikasi sesi login" }, { status: 500 });
-    }
-
-    // Sesi sudah ter-set lewat cookie di response ini. Client tinggal redirect ke "/".
-    return NextResponse.json({ url: "/" });
-  } catch (err) {
-    return NextResponse.json({ error: `Server Error: ${err.message}` }, { status: 500 });
   }
+
+  return NextResponse.redirect(new URL("/", request.url));
 }
