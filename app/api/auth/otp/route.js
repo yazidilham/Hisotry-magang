@@ -54,7 +54,11 @@ export async function POST(request) {
     const hashedToken = linkData?.properties?.hashed_token;
 
     if (linkError || !hashedToken) {
-      return NextResponse.json({ error: "Gagal membuat sesi login" }, { status: 500 });
+      // SEMENTARA untuk debug: tampilkan pesan error asli dari Supabase.
+      return NextResponse.json(
+        { error: `Gagal membuat sesi login: ${linkError?.message ?? "hashedToken kosong"}` },
+        { status: 500 }
+      );
     }
 
     // Tukar token_hash jadi sesi LANGSUNG di sini, pakai client yang sadar-cookie,
@@ -66,7 +70,11 @@ export async function POST(request) {
     });
 
     if (verifyError) {
-      return NextResponse.json({ error: "Gagal memverifikasi sesi login" }, { status: 500 });
+      // SEMENTARA untuk debug: tampilkan pesan error asli dari Supabase.
+      return NextResponse.json(
+        { error: `Gagal memverifikasi sesi login: ${verifyError.message}` },
+        { status: 500 }
+      );
     }
 
     // Sesi sudah ter-set lewat cookie di response ini. Client tinggal redirect ke "/".
