@@ -15,10 +15,15 @@ export function createRouteClient() {
           return cookieStore.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
+          // Buang maxAge & expires supaya jadi session cookie:
+          // otomatis terhapus saat browser benar-benar ditutup,
+          // staff wajib login ulang di kunjungan berikutnya.
+          const { maxAge, expires, ...sessionCookieOptions } = options;
+          cookieStore.set({ name, value, ...sessionCookieOptions });
         },
         remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: "", ...options });
+          const { maxAge, expires, ...sessionCookieOptions } = options;
+          cookieStore.set({ name, value: "", ...sessionCookieOptions });
         },
       },
     }
