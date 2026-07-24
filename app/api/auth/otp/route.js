@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import otplib from "otplib";
+import { authenticator } from "otplib";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request) {
@@ -12,7 +12,7 @@ export async function POST(request) {
     }
 
     const supabaseAdmin = createAdminClient();
-    
+
     // Ambil data secret TOTP berdasarkan email user dari tabel profiles
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
@@ -24,9 +24,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Konfigurasi Authenticator tidak ditemukan untuk akun ini" }, { status: 400 });
     }
 
-    // Ambil instance authenticator dari default import otplib
-    const authenticatorInstance = otplib.authenticator || otplib;
-    const isValid = authenticatorInstance.check(String(token).trim(), String(profile.totp_secret).trim());
+    const isValid = authenticator.check(String(token).trim(), String(profile.totp_secret).trim());
 
     if (!isValid) {
       return NextResponse.json({ error: "Kode verifikasi salah atau sudah kedaluwarsa" }, { status: 401 });
