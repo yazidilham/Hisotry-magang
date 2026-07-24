@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authenticator } from "otplib";
+import { verify } from "otplib";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request) {
@@ -24,9 +24,21 @@ export async function POST(request) {
       return NextResponse.json({ error: "Konfigurasi Authenticator tidak ditemukan untuk akun ini" }, { status: 400 });
     }
 
-    const isValid = authenticator.check(String(token).trim(), String(profile.totp_secret).trim());
+    let result;
+    try {
+      result = await verify({
+        secret: String(profile.totp_secret).trim(),
+        token: String(token).trim(),
+      });
+    } catch (verifyErr) {
+      // contoh: SecretTooShortError kalau secret di DB kurang dari 16 byte setelah decode base32
+      return NextResponse.json(
+        { error: `Gagal verifikasi kode: ${verifyErr.message}` },
+        { status: 400 }
+      );
+    }
 
-    if (!isValid) {
+    if (!result?.valid) {
       return NextResponse.json({ error: "Kode verifikasi salah atau sudah kedaluwarsa" }, { status: 401 });
     }
 
